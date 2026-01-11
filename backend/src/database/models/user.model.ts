@@ -17,10 +17,11 @@ export interface UserDocument extends Document {
   userPreferences: UserPreferences;
   comparePassword(value: string): Promise<boolean>;
 }
+
 const userPreferencesSchema = new Schema<UserPreferences>({
   enable2FA: { type: Boolean, default: false },
   emailNotification: { type: Boolean, default: true },
-  twoFactorSecret: { type: String, required: false },
+  twoFactorSecret: { type: String },
 });
 
 const userSchema = new Schema<UserDocument>(
@@ -28,11 +29,14 @@ const userSchema = new Schema<UserDocument>(
     name: {
       type: String,
       required: true,
+      trim: true,
     },
     email: {
       type: String,
-      unique: true,
       required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
     },
     password: {
       type: String,
@@ -49,9 +53,9 @@ const userSchema = new Schema<UserDocument>(
   },
   {
     timestamps: true,
-    toJSON: {},
   }
 );
+
 userSchema.pre("save", async function (next) {
   if (this.isModified("password")) {
     this.password = await hashValue(this.password);
@@ -64,10 +68,17 @@ userSchema.methods.comparePassword = async function (value: string) {
 };
 
 userSchema.set("toJSON", {
-  transform: function (doc, ret) {
-    delete ret.password;
-    delete ret.userPreferences.twoFactorSecret;
-    return ret;
+  transform: function (_doc, ret) {
+    // ✅ Remove password safely
+    const { password, ...rest } = ret;
+
+    // ✅ Remove 2FA secret safely
+    if (rest.userPreferences) {
+      const { twoFactorSecret, ...prefs } = rest.userPreferences;
+      rest.userPreferences = prefs;
+    }
+
+    return rest;
   },
 });
 
